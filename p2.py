@@ -11,21 +11,29 @@ import matplotlib.pyplot as plt
 class Graph:
     def __init__(self):
         self.graph_dict = {}
-        self.graph_dict_1 = {}
         self.visa_requirements = {}
         self.num_scales = {}
 
     def add_edge(self, origin, destination, weight):
         if origin not in self.graph_dict:
             self.graph_dict[origin] = []
-            self.visa_requirements[origin] = False  
+            self.visa_requirements[origin] = {}
         if destination not in self.graph_dict:
             self.graph_dict[destination] = []
-            self.visa_requirements[destination] = True 
+            self.visa_requirements[destination] = {}
         self.graph_dict[origin].append((destination, weight))
 
+    def load_visa_requirements(self, filename):
+        filename = "visa_requirements.txt"
+        with open(filename, 'r') as file:
+            for line in file:
+                airport_code, destination, visa_required = line.strip().split(',')
+                self.visa_requirements[(airport_code, destination)] = visa_required.strip()
+
     def dijkstra(self, start_node, end_node, has_visa):
-        # Inicializar las distancias y los padres
+        # Initialize distances and parents
+        #Imprimo el diccionario de visa_requirements en la terminal
+        print(self.visa_requirements)
         distances = {node: float('inf') for node in self.graph_dict}
         distances[start_node] = 0
         parents = {node: None for node in self.graph_dict}
@@ -48,7 +56,7 @@ class Graph:
                     parents[neighbor] = current_node
                     heapq.heappush(pq, (distance, neighbor))
 
-        # Reconstruir la ruta
+        # Reconstruct the path
         path = []
         node = end_node
         while node is not None:
@@ -56,7 +64,7 @@ class Graph:
             node = parents[node]
         path.reverse()
 
-        # Actualizar el número de escalas de cada nodo en el camino
+        # Update the number of scales for each node in the path
         self.num_scales = {node: 0 for node in path}
         for i in range(1, len(path)):
             self.num_scales[path[i]] = self.num_scales[path[i-1]] + 1
@@ -67,6 +75,40 @@ class Graph:
             total_distance = distances[end_node]
             return path, total_distance, self.num_scales[end_node]
         
+    
+    def dijkstra_min_scales(self, start_node, end_node, has_visa):
+        # Inicializar las distancias y los padres
+        distances = {node: float('inf') for node in self.graph_dict}
+        distances[start_node] = 0
+        parents = {node: None for node in self.graph_dict}
+        pq = [(0, start_node)]
+
+        while pq:
+            current_distance, current_node = heapq.heappop(pq)
+            if current_node == end_node:
+                break
+            if current_distance > distances[current_node]:
+                continue
+            for neighbor, _ in self.graph_dict[current_node]:
+                distance = current_distance + 1  # Siempre aumentamos en 1 el número de escalas
+
+                if distance < distances[neighbor]:
+                    distances[neighbor] = distance
+                    parents[neighbor] = current_node
+                    heapq.heappush(pq, (distance, neighbor))
+
+        # Reconstruir la ruta
+        path = []
+        node = end_node
+        while node is not None:
+            path.append(node)
+            node = parents[node]
+        path.reverse()
+
+        if not path or path[0] != start_node:
+            return "No hay ruta disponible", float('inf')
+        else:
+            return path, distances[end_node]
     
     #Mostrat el grafo el matpotlib leyendo el txt caminos.txt
     def show_graph(self):
@@ -198,34 +240,36 @@ class GUI:
         if not self.start_var.get() or not self.end_var.get():
             messagebox.showwarning("Advertencia", "Debe llenar todos lo campos")
             return
-
+        
         start_node = self.start_var.get().split(" - ")[0]
         end_node = self.end_var.get().split(" - ")[0]
         has_visa = self.visa_var.get()
 
         # Check if a visa is required for the destination
+        #Imprimo en la terminal el status de la visa
+        print(self.graph.visa_requirements[end_node])
         if not has_visa and self.graph.visa_requirements[end_node]:
             self.result_label.configure(text=f"You need a visa to travel to {end_node}")
             return
-
-        path, total_distance, num_scales = self.graph.dijkstra(start_node, end_node, has_visa)
-
-        if isinstance(path, str):
-            self.result_label.configure(text=path)
         else:
-            self.result_label.configure(text=f"The shortest path from {start_node} to {end_node} is: {' -> '.join(path)}\nThe total distance is: {total_distance}")
-        # Visualize the graph
-        G = nx.Graph()
-        for node, neighbors in self.graph.graph_dict.items():
-            for neighbor, weight in neighbors:
-                G.add_edge(node, neighbor, weight=weight)
-        
-        pos = nx.spring_layout(G)
-        plt.clf()
-        nx.draw(G, pos, with_labels=True, node_color='lightblue', edge_color='gray', width=2)
-        nx.draw_networkx_edges(G, pos, edgelist=list(zip(path[:-1], path[1:])), edge_color='r', width=3)
-        nx.draw_networkx_edge_labels(G, pos, edge_labels=dict([(edge, G[edge[0]][edge[1]]['weight']) for edge in G.edges()]))
-        self.canvas.draw()
+            path, total_distance, num_scales = self.graph.dijkstra(start_node, end_node, has_visa)
+
+            if isinstance(path, str):
+                self.result_label.configure(text=path)
+            else:
+                self.result_label.configure(text=f"The shortest path from {start_node} to {end_node} is: {' -> '.join(path)}\nThe total distance is: {total_distance}")
+            # Visualize the graph
+            G = nx.Graph()
+            for node, neighbors in self.graph.graph_dict.items():
+                for neighbor, weight in neighbors:
+                    G.add_edge(node, neighbor, weight=weight)
+            
+            pos = nx.spring_layout(G)
+            plt.clf()
+            nx.draw(G, pos, with_labels=True, node_color='lightblue', edge_color='gray', width=2)
+            nx.draw_networkx_edges(G, pos, edgelist=list(zip(path[:-1], path[1:])), edge_color='r', width=3)
+            nx.draw_networkx_edge_labels(G, pos, edge_labels=dict([(edge, G[edge[0]][edge[1]]['weight']) for edge in G.edges()]))
+            self.canvas.draw()
     def search_flights_num(self):
         # Valido que coloquen algo en los textboxes
         if not self.start_var.get() or not self.end_var.get():
@@ -239,25 +283,26 @@ class GUI:
         if not has_visa and self.graph.visa_requirements[end_node]:
             self.result_label.configure(text=f"You need a visa to travel to {end_node}")
             return
-
-        path, total_distance, num_scales = self.graph.dijkstra(start_node, end_node, has_visa)
-
-        if isinstance(path, str):
-            self.result_label.configure(text=path)
         else:
-            self.result_label.configure(text=f"The minimum number of scales is: {num_scales}")
+            path, num_scales = self.graph.dijkstra_min_scales(start_node, end_node, has_visa)
 
-            # Visualizar el grafo
+            if isinstance(path, str):
+                self.result_label.configure(text=path)
+            else:
+                self.result_label.configure(text=f"The shortest path from {start_node} to {end_node} is: {' -> '.join(path)}\nThe total number of scales is: {num_scales}")
+            # Visualize the graph
             G = nx.Graph()
             for node, neighbors in self.graph.graph_dict.items():
                 for neighbor, weight in neighbors:
                     G.add_edge(node, neighbor, weight=weight)
-
+            #Muestra el grafo
             pos = nx.spring_layout(G)
             plt.clf()
             nx.draw(G, pos, with_labels=True, node_color='lightblue', edge_color='gray', width=2)
+            nx.draw_networkx_edges(G, pos, edgelist=list(zip(path[:-1], path[1:])), edge_color='r', width=3)
             nx.draw_networkx_edge_labels(G, pos, edge_labels=dict([(edge, G[edge[0]][edge[1]]['weight']) for edge in G.edges()]))
             self.canvas.draw()
+
     def exit_app(self):
         self.master.destroy()
         self.master.quit()
